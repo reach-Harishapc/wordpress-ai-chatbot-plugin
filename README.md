@@ -1,226 +1,106 @@
-# AightBot
+# 🔌 AightBot — WordPress AI Chatbot Plugin with RAG Support
 
-WordPress plugin that connects your site to any OpenAI-compatible LLM API. Includes simple RAG for searching and citing your WordPress content.
+A feature-rich, customizable **AI chatbot plugin for WordPress** with Retrieval-Augmented Generation (RAG), encrypted API key storage, session management, and a fully configurable admin panel. Built for [Ziegler Technical Solutions](https://ziegler.us).
 
-![AightBot LLM Chatbot WordPress Plugin](.github/screenshots/aightbot_chatbot.png)
+---
 
-## Requirements
+## ✨ Features
 
-- WordPress 5.6+
-- PHP 7.4+
-- MySQL 5.6+ with FULLTEXT support
-- OpenSSL PHP extension
+- **AI-Powered Conversations** — Integrates with OpenAI API for intelligent chat responses
+- **RAG Support** — Retrieval-Augmented Generation for context-aware answers using your site's content
+- **Content Indexing** — Automatically indexes WordPress content for RAG queries
+- **Encrypted API Keys** — Secure storage of API keys using OpenSSL encryption
+- **Session Management** — Maintains conversation context across multiple messages
+- **Admin Settings Panel** — Full configuration UI with general settings and RAG configuration
+- **Frontend Chat Widget** — Embeddable chatbot widget with custom CSS styling
+- **Logging System** — Built-in logger for debugging and monitoring
+- **i18n Ready** — Internationalization support with text domain and language files
+- **Clean Uninstall** — Removes all plugin data on uninstallation
 
-## Installation
+## 🛠️ Tech Stack
 
-1. Upload `aightbot` folder to `/wp-content/plugins/`
-2. Activate through WordPress admin
-3. Configure in AightBot settings
+| Layer       | Technology                         |
+|-------------|------------------------------------|
+| Platform    | WordPress (PHP)                    |
+| AI          | OpenAI API                         |
+| Security    | OpenSSL Encryption                 |
+| Frontend    | HTML, CSS, JavaScript              |
+| Database    | WordPress Options API              |
+| Architecture| OOP with Singleton pattern         |
 
-## Configuration
+## 📁 Project Structure
 
-![AightBot LLM Chatbot General Configuration ](.github/screenshots/admin_general.png)
-
-### API Connection
-
-**LLM API URL** (required)
-- Must be OpenAI chat completions format
-- Examples: `https://api.openai.com/v1/chat/completions` or `http://localhost:1234/v1/chat/completions`
-
-**API Key** (if required by your endpoint)
-- Encrypted with AES-256-CBC before storage
-- Shows `••••••••` placeholder after saving
-
-**Model Name** (optional)
-- Leave empty to use endpoint default
-
-### Bot Configuration
-
-**System Prompt** - Define bot behavior and personality
-
-**Starter Message** (optional) - First message shown to users
-
-**Sampler Parameters** - JSON object passed to the API:
-```json
-{
-  "temperature": 0.7,
-  "max_tokens": 1000
-}
+```
+wordpress-ai-plugin-2022/
+├── aightbot.php                    # Main plugin file & bootstrap
+├── index.php                       # Security index
+├── uninstall.php                   # Clean uninstall handler
+├── includes/
+│   ├── class-admin-settings.php    # Admin panel settings
+│   ├── class-api-handler.php       # OpenAI API integration
+│   ├── class-content-indexer.php   # Content indexing for RAG
+│   ├── class-encryption.php        # API key encryption
+│   ├── class-frontend-widget.php   # Chat widget frontend
+│   ├── class-install.php           # Activation/deactivation hooks
+│   ├── class-logger.php            # Logging system
+│   ├── class-rag-handler.php       # RAG query processing
+│   └── class-session-manager.php   # Conversation session management
+├── admin/
+│   ├── css/admin-style.css         # Admin panel styles
+│   ├── js/admin-script.js          # Admin panel scripts
+│   └── partials/settings-page.php  # Settings page template
+├── assets/
+│   ├── css/widget-style.css        # Chat widget styles
+│   └── js/widget-script.js         # Chat widget scripts
+├── languages/                      # Translation files
+└── .github/
+    └── screenshots/                # Plugin screenshots
+        ├── aightbot_chatbot.png
+        ├── admin_general.png
+        └── admin_rag.png
 ```
 
-### Rate Limiting
+## 🚀 Installation
 
-- **Max Requests**: Messages allowed per time window (default: 20)
-- **Time Window**: Seconds (default: 300)
+### From WordPress Admin
 
-Per-session enforcement.
+1. Download the plugin ZIP file
+2. Go to **WordPress Admin → Plugins → Add New → Upload Plugin**
+3. Upload the ZIP and click **Install Now**
+4. Activate the plugin
 
-### Context Limits
+### Manual Installation
 
-- **Max Messages**: Conversation history limit (default: 40)
-- **Max Words**: Word count limit for context (default: 8000)
-
-Oldest messages are truncated when limits are exceeded.
-
-## RAG (Retrieval-Augmented Generation)
-
-![AightBot LLM Chatbot General Configuration ](.github/screenshots/admin_rag.png)
-
-Enable to let the bot search and cite your WordPress content.
-
-### Setup
-
-1. Enable RAG in settings
-2. Select content types to index (posts, pages, custom types)
-3. Click "Reindex Content Now"
+1. Upload the `wordpress-ai-plugin-2022` folder to `/wp-content/plugins/`
+2. Activate the plugin through the **Plugins** menu in WordPress
 
 ### Configuration
 
-**Content Depth**
-- Full: Index complete content
-- Excerpt: Index excerpts only
-- Title Only: Minimal storage
+1. Go to **WordPress Admin → AightBot Settings**
+2. Enter your OpenAI API key (stored encrypted)
+3. Configure the chatbot behavior and appearance
+4. Enable RAG and configure content indexing (optional)
+5. Enable the chatbot to display the widget on your site
 
-**Content Chunking** - Split long posts into sections (optional)
+## 🔒 Security Features
 
-**Results Count** - How many search results to include (default: 5)
+- **Encrypted API Keys** — API keys are encrypted using OpenSSL before database storage
+- **OpenSSL Requirement** — Plugin checks for the OpenSSL PHP extension on activation
+- **Direct Access Prevention** — All PHP files check for `ABSPATH` constant
+- **Clean Uninstall** — All plugin data is removed when the plugin is deleted
 
-**Min Relevance** - Threshold for including results (0-1, default: 0.3)
+## 📸 Screenshots
 
-**Cite Sources** - Include URLs in responses (automatically converted to clickable links)
+| Admin Settings | RAG Configuration | Chat Widget |
+|:-:|:-:|:-:|
+| General settings panel | RAG setup & indexing | Frontend chatbot widget |
 
-**Restrict to Indexed Content** - Bot uses only your content, not general knowledge
+## ⚙️ Requirements
 
-### Citation Formats Supported
+- WordPress 5.0+
+- PHP 7.4+ with OpenSSL extension
+- OpenAI API key
 
-The widget automatically converts these to clickable links:
-- `@cite(url)`
-- `Source: url`
-- `URL: url`
-- `<a href="url">text</a>`
-- `[text](url)` (markdown)
-- Plain URLs
+---
 
-## Session Management
-
-**Client**: `sessionStorage` (cleared on browser close)
-
-**Server**: Cleaned hourly, 1 hour retention after last activity
-
-Customize retention:
-```php
-add_filter('aightbot_session_retention_hours', function($hours) {
-    return 2;
-});
-```
-
-## Logging
-
-Enable in settings to track messages and debug issues.
-
-- Logs user messages, bot responses, session IDs, IPs, timestamps
-- Auto-cleanup based on retention days (default: 30)
-
-## Database Tables
-
-**wp_aightbot_sessions**
-- Active conversation sessions
-- Hourly cleanup of inactive sessions
-
-**wp_aightbot_content_index**
-- Indexed content for RAG
-- FULLTEXT search on title and content
-
-## WordPress Hooks
-
-**Actions**
-- `aightbot_cleanup_sessions` - Hourly
-- `aightbot_cleanup_logs` - Daily
-- `aightbot_scheduled_reindex` - Scheduled (if enabled)
-
-**Filters**
-- `aightbot_session_retention_hours` - Default: 1
-
-## AJAX Endpoints
-
-- `aightbot_send_message` - Send message, returns response
-- `aightbot_create_session` - Generate new session ID
-- `aightbot_test_connection` - Admin only, test API
-
-## API Compatibility
-
-Works with any OpenAI-compatible endpoint:
-- OpenAI
-- Azure OpenAI (include model in URL)
-- LM Studio, Ollama, LocalAI (local)
-- Custom endpoints with compatible format
-
-HTTP URLs automatically skip SSL verification. For HTTPS with self-signed certificates, enable "Disable SSL Verification" in settings (development only).
-
-## File Structure
-
-```
-aightbot/
-├── admin/                  # Settings interface
-├── assets/                 # Widget CSS/JS
-├── includes/
-│   ├── class-admin-settings.php
-│   ├── class-api-handler.php
-│   ├── class-content-indexer.php
-│   ├── class-encryption.php
-│   ├── class-frontend-widget.php
-│   ├── class-install.php
-│   ├── class-logger.php
-│   ├── class-rag-handler.php
-│   └── class-session-manager.php
-├── languages/
-├── aightbot.php
-└── uninstall.php
-```
-
-## Troubleshooting
-
-**Widget not appearing**
-- Check chatbot is enabled in settings
-- Verify API URL is configured
-- Check browser console for errors
-
-**Connection fails**
-- Test connection in settings
-- Verify API URL and key
-- Check server can make outbound requests
-- For local APIs, ensure service is running
-
-**RAG not working**
-- Verify RAG is enabled and content is indexed
-- Check FULLTEXT minimum word length (usually 4 chars)
-- Lower minimum relevance threshold if needed
-
-## Development
-
-Extend with standard WordPress hooks:
-
-```php
-// Custom CSS
-add_action('wp_enqueue_scripts', function() {
-    wp_add_inline_style('aightbot-widget-style', '
-        .aightbot-widget { /* styles */ }
-    ');
-});
-
-// Modify system prompt
-add_filter('aightbot_system_prompt', function($prompt) {
-    return $prompt . "\nAdditional instruction.";
-});
-```
-
-## License
-
-Apache 2.0 License.
-
-## Contact
-
-- GitHub issues
-- [Ziegler Technical Solutions LLC](https://ziegler.us)
-- [AightBot Case Study](https://www.ziegler.us/cs-wordpress-llm-integration/)
-- [AightBits Blog](https://aightbits.com)
+> **Note:** This plugin was built as a freelance project in 2022 for Ziegler Technical Solutions, featuring enterprise-grade security and RAG capabilities for WordPress sites.
