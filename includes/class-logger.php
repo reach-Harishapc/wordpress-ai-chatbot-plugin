@@ -34,12 +34,17 @@ class AightBot_Logger {
             wp_mkdir_p($this->log_dir);
         }
         
-        // Create .htaccess to deny access
+        // Create .htaccess to deny access (supports Apache 2.2 and 2.4)
         $htaccess_file = $this->log_dir . '/.htaccess';
         if (!file_exists($htaccess_file)) {
-            $htaccess_content = "# Deny all access to log files\n";
+            $htaccess_content = "# Deny all access\n";
+            $htaccess_content .= "<IfModule mod_authz_core.c>\n";
+            $htaccess_content .= "Require all denied\n";
+            $htaccess_content .= "</IfModule>\n";
+            $htaccess_content .= "<IfModule !mod_authz_core.c>\n";
             $htaccess_content .= "Order deny,allow\n";
             $htaccess_content .= "Deny from all\n";
+            $htaccess_content .= "</IfModule>\n";
             file_put_contents($htaccess_file, $htaccess_content);
         }
         
@@ -56,24 +61,42 @@ class AightBot_Logger {
      * @return string IP address
      */
     private function get_client_ip() {
-        $ip = '';
+        $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
         
-        if (!empty($_SERVER['HTTP_CLIENT_IP'])) {
-            $ip = $_SERVER['HTTP_CLIENT_IP'];
-        } elseif (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-            // Get first IP if multiple are present
-            $ips = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
-            $ip = trim($ips[0]);
-        } elseif (!empty($_SERVER['REMOTE_ADDR'])) {
-            $ip = $_SERVER['REMOTE_ADDR'];
+        if (!filter_var($ip, FILTER_VALIDATE_IP)) {
+            return 'unknown';
         }
         
-        // Validate IP
-        if (filter_var($ip, FILTER_VALIDATE_IP)) {
-            return $ip;
+        // CloudFlare support
+        if (isset($_SERVER['HTTP_CF_CONNECTING_IP'])) {
+            $cf_ip = trim($_SERVER['HTTP_CF_CONNECTING_IP']);
+            if (filter_var($cf_ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+                return $cf_ip;
+            }
         }
         
-        return 'unknown';
+        $trusted_proxies = apply_filters('aightbot_trusted_proxies', []);
+        
+        if (!empty($trusted_proxies) && in_array($ip, $trusted_proxies, true)) {
+            if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+                $ips = array_map('trim', explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']));
+                
+                foreach ($ips as $potential_ip) {
+                    if (filter_var($potential_ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+                        $ip = $potential_ip;
+                        break;
+                    }
+                }
+            }
+            elseif (!empty($_SERVER['HTTP_X_REAL_IP'])) {
+                $real_ip = trim($_SERVER['HTTP_X_REAL_IP']);
+                if (filter_var($real_ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+                    $ip = $real_ip;
+                }
+            }
+        }
+        
+        return filter_var($ip, FILTER_VALIDATE_IP) ? $ip : 'unknown';
     }
     
     /**
@@ -108,15 +131,12 @@ class AightBot_Logger {
         
         $log_file = $this->log_dir . '/session_' . sanitize_file_name($session_id) . '.log';
         
-        // CRITICAL SECURITY FIX: Check log file size before writing
-        // Prevent disk exhaustion from unbounded log growth
-        $max_log_size = 10 * 1024 * 1024; // 10MB per session log
+        $max_log_size = 10 * 1024 * 1024;
         
         if (file_exists($log_file) && filesize($log_file) >= $max_log_size) {
-            // Log file too large, rotate it
             $rotated_file = $log_file . '.old';
             if (file_exists($rotated_file)) {
-                unlink($rotated_file); // Delete old rotation
+                unlink($rotated_file);
             }
             rename($log_file, $rotated_file);
         }

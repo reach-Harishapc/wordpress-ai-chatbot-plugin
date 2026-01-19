@@ -3,7 +3,7 @@
  * Plugin Name: AightBot
  * Plugin URI: https://ziegler.us
  * Description: Customizable AI chatbot for WordPress with RAG support
- * Version: 0.5.0
+ * Version: 0.6.0
  * Author: Ziegler Technical Solutions
  * Text Domain: aightbot
  * Domain Path: /languages
@@ -14,8 +14,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-// Define plugin constants
-define('AIGHTBOT_VERSION', '0.5.0');
+define('AIGHTBOT_VERSION', '0.6.0');
 define('AIGHTBOT_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('AIGHTBOT_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('AIGHTBOT_OPTION_PREFIX', 'aightbot_');
@@ -102,6 +101,9 @@ class AightBot_Plugin {
     }
     
     public function init_components() {
+        // Check for updates
+        AightBot_Install::maybe_update();
+        
         // Initialize encryption first
         $this->encryption = new AightBot_Encryption();
         

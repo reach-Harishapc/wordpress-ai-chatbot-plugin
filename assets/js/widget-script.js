@@ -14,25 +14,28 @@
          * Initialize widget
          */
         init: function() {
-            // Restore session from sessionStorage if exists
             try {
                 const savedSession = sessionStorage.getItem('aightbot_session_id');
                 if (savedSession) {
                     this.sessionId = savedSession;
                 }
                 
-                // Restore chat history from sessionStorage
-                const savedHistory = sessionStorage.getItem('aightbot_chat_history');
-                if (savedHistory) {
-                    $('.aightbot-widget-messages').html(savedHistory);
+                const savedMessages = sessionStorage.getItem('aightbot_messages');
+                if (savedMessages) {
+                    const messages = JSON.parse(savedMessages);
+                    if (Array.isArray(messages)) {
+                        messages.forEach(msg => {
+                            if (msg.type && msg.content) {
+                                this.addMessage(msg.content, msg.type);
+                            }
+                        });
+                    }
                 }
             } catch (e) {
-                // sessionStorage not available
             }
             
             this.bindEvents();
             
-            // Only show greeting if no saved history
             const hasHistory = $('.aightbot-widget-messages').children().length > 0;
             if (!hasHistory) {
                 this.showInitialGreeting();
@@ -215,31 +218,33 @@
             
             // Links - internal links same tab, external new tab
             html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function(match, text, url) {
-                // Check if internal link (same domain or relative)
-                const currentHost = window.location.hostname;
-                let isInternal = false;
+                // Validate URL protocol
+                var allowedProtocols = ['http:', 'https:', 'mailto:', 'tel:'];
+                var currentHost = window.location.hostname;
+                var isInternal = false;
                 
                 try {
                     if (url.startsWith('/') || url.startsWith('#') || url.startsWith('?')) {
-                        // Relative URL - internal
                         isInternal = true;
-                    } else if (url.startsWith('http')) {
-                        // Absolute URL - check domain
-                        const linkHost = new URL(url).hostname;
-                        isInternal = linkHost === currentHost;
+                    } else if (url.startsWith('http://') || url.startsWith('https://')) {
+                        var urlObj = new URL(url);
+                        if (allowedProtocols.indexOf(urlObj.protocol) === -1) {
+                            return text; // Invalid protocol, return plain text
+                        }
+                        isInternal = urlObj.hostname === currentHost;
+                    } else if (url.startsWith('mailto:') || url.startsWith('tel:')) {
+                        isInternal = false;
                     } else {
-                        // No protocol, relative path
-                        isInternal = true;
+                        return text; // Unknown protocol, return plain text
                     }
                 } catch (e) {
-                    // Invalid URL, treat as internal
-                    isInternal = true;
+                    return text;
                 }
                 
                 if (isInternal) {
                     return '<a href="' + url + '">' + text + '</a>';
                 } else {
-                    return '<a href="' + url + '" target="_blank" rel="noopener">' + text + '</a>';
+                    return '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + text + '</a>';
                 }
             });
             
@@ -250,27 +255,25 @@
             html = html.replace(/^---$/gm, '<hr>');
             html = html.replace(/^\*\*\*$/gm, '<hr>');
             
-            // Lists - numbered
-            html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
-            let olMatches = html.match(/(<li>.*?<\/li>\n?)+/g);
-            if (olMatches) {
-                olMatches.forEach(function(match) {
-                    if (!match.includes('<ul>') && !match.includes('<ol>')) {
-                        html = html.replace(match, '<ol>' + match + '</ol>');
-                    }
-                });
-            }
+            // Lists - numbered (use unique marker first)
+            html = html.replace(/^\d+\. (.+)$/gm, '<oli>$1</oli>');
             
-            // Lists - bulleted  
-            html = html.replace(/^[-*+] (.+)$/gm, '<li>$1</li>');
-            let ulMatches = html.match(/(<li>.*?<\/li>\n?)+/g);
-            if (ulMatches) {
-                ulMatches.forEach(function(match) {
-                    if (!match.includes('<ul>') && !match.includes('<ol>')) {
-                        html = html.replace(match, '<ul>' + match + '</ul>');
-                    }
-                });
-            }
+            // Lists - bulleted (use unique marker first)
+            html = html.replace(/^[-*+] (.+)$/gm, '<uli>$1</uli>');
+            
+            // Wrap ordered lists
+            html = html.replace(/(<oli>.*?<\/oli>\n?)+/g, function(match) {
+                return '<ol>' + match.replace(/<\/?oli>/g, function(tag) {
+                    return tag === '<oli>' ? '<li>' : '</li>';
+                }) + '</ol>';
+            });
+            
+            // Wrap unordered lists
+            html = html.replace(/(<uli>.*?<\/uli>\n?)+/g, function(match) {
+                return '<ul>' + match.replace(/<\/?uli>/g, function(tag) {
+                    return tag === '<uli>' ? '<li>' : '</li>';
+                }) + '</ul>';
+            });
             
             // Paragraphs and line breaks
             html = html.replace(/\n\n+/g, '</p><p>');
@@ -503,10 +506,17 @@
          */
         saveChatHistory: function() {
             try {
-                const history = $('.aightbot-widget-messages').html();
-                sessionStorage.setItem('aightbot_chat_history', history);
+                const messages = [];
+                $('.aightbot-widget-messages .aightbot-message').each(function() {
+                    const $msg = $(this);
+                    const type = $msg.hasClass('aightbot-user-message') ? 'user' : 'bot';
+                    const content = $msg.find('.aightbot-message-content').text();
+                    if (content) {
+                        messages.push({ type: type, content: content });
+                    }
+                });
+                sessionStorage.setItem('aightbot_messages', JSON.stringify(messages));
             } catch (e) {
-                // sessionStorage not available or quota exceeded
             }
         },
         

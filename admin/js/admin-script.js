@@ -6,6 +6,9 @@
     
     $(document).ready(function() {
         
+        // Initialize color pickers
+        $('.aightbot-color-picker').wpColorPicker();
+        
         // Test Connection
         $('#test-connection-btn').on('click', function(e) {
             e.preventDefault();

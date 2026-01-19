@@ -326,7 +326,6 @@ class AightBot_Content_Indexer {
      * @return array Array of content chunks
      */
     private function chunk_content($content, $chunk_size) {
-        // OPTIMIZATION: Better word splitting using regex for multiple spaces/newlines
         $words = preg_split('/\s+/', trim($content), -1, PREG_SPLIT_NO_EMPTY);
         $chunks = [];
         

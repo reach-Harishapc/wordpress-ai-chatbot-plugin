@@ -80,11 +80,11 @@ class AightBot_Install {
             'api_key' => '',
             'model_name' => '',
             'system_prompt' => __('You are a helpful AI assistant.', 'aightbot'),
-            'starter_message' => '',
+            'starter_message' => __('Hi! I\'m AightBot. How can I help you today?', 'aightbot'),
             'sampler_overrides' => '',
             'disable_ssl_verify' => 'no',
             'rate_limit_requests' => 20,
-            'rate_limit_window' => 300,
+            'rate_limit_window' => 60,
             'enable_logging' => 'no',
             'log_retention_days' => 30,
             'max_context_messages' => 40,
@@ -118,6 +118,21 @@ class AightBot_Install {
             add_option(AIGHTBOT_OPTION_PREFIX . 'rag_settings', $default_rag_settings);
         }
         
+        // Appearance settings
+        $default_appearance_settings = [
+            'primary_color' => '#667eea',
+            'secondary_color' => '#764ba2',
+            'header_text_color' => '#ffffff',
+            'bot_message_bg' => '#ffffff',
+            'bot_message_text' => '#1f2937',
+            'chat_background' => '#f9fafb',
+            'widget_position' => 'right'
+        ];
+        
+        if (false === get_option(AIGHTBOT_OPTION_PREFIX . 'appearance_settings')) {
+            add_option(AIGHTBOT_OPTION_PREFIX . 'appearance_settings', $default_appearance_settings);
+        }
+        
         // Store version
         add_option(AIGHTBOT_OPTION_PREFIX . 'version', AIGHTBOT_VERSION);
     }
@@ -132,15 +147,15 @@ class AightBot_Install {
         
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
         
-        // Sessions table
         $table_name = $wpdb->prefix . 'aightbot_sessions';
         
-        // Only create if doesn't exist
-        if ($wpdb->get_var("SHOW TABLES LIKE '$table_name'") != $table_name) {
+        if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table_name)) != $table_name) {
             $sql = "CREATE TABLE $table_name (
                 id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
                 session_id varchar(64) NOT NULL,
                 user_id bigint(20) UNSIGNED DEFAULT 0,
+                ip_address varchar(45) DEFAULT '',
+                user_agent varchar(255) DEFAULT '',
                 bot_name varchar(100) DEFAULT 'AightBot',
                 history longtext,
                 created_at datetime NOT NULL,
@@ -148,16 +163,16 @@ class AightBot_Install {
                 PRIMARY KEY (id),
                 UNIQUE KEY session_id (session_id),
                 KEY user_id (user_id),
-                KEY last_active (last_active)
+                KEY last_active (last_active),
+                KEY user_last_active (user_id, last_active)
             ) $charset_collate;";
             
             dbDelta($sql);
         }
         
-        // Content index table for RAG
         $content_index_table = $wpdb->prefix . 'aightbot_content_index';
         
-        if ($wpdb->get_var("SHOW TABLES LIKE '$content_index_table'") != $content_index_table) {
+        if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $content_index_table)) != $content_index_table) {
             $sql = "CREATE TABLE $content_index_table (
                 id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
                 post_id bigint(20) UNSIGNED NOT NULL,
@@ -170,6 +185,7 @@ class AightBot_Install {
                 KEY post_id (post_id),
                 KEY post_type (post_type),
                 KEY indexed_at (indexed_at),
+                KEY post_type_indexed (post_type, indexed_at),
                 FULLTEXT KEY content_search (title, content)
             ) $charset_collate;";
             
@@ -196,10 +212,36 @@ class AightBot_Install {
      * Run version-specific updates
      */
     private static function run_updates($from_version) {
-        // Example: if updating from pre-1.0 to 1.0+
-        // if (version_compare($from_version, '1.0.0', '<')) {
-        //     self::update_to_1_0_0();
-        // }
+        if (version_compare($from_version, '0.5.4', '<')) {
+            self::update_to_0_5_4();
+        }
+    }
+    
+    private static function update_to_0_5_4() {
+        global $wpdb;
+        $table = $wpdb->prefix . 'aightbot_sessions';
+        
+        // Check if table exists first
+        if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table)) != $table) {
+            return; // Table doesn't exist yet, will be created with new schema
+        }
+        
+        // Check if columns exist before adding
+        $columns = $wpdb->get_col("SHOW COLUMNS FROM $table");
+        
+        if (!in_array('ip_address', $columns)) {
+            $result = $wpdb->query("ALTER TABLE $table ADD COLUMN ip_address varchar(45) DEFAULT '' AFTER user_id");
+            if ($result === false) {
+                error_log('AightBot migration: Failed to add ip_address column - ' . $wpdb->last_error);
+            }
+        }
+        
+        if (!in_array('user_agent', $columns)) {
+            $result = $wpdb->query("ALTER TABLE $table ADD COLUMN user_agent varchar(255) DEFAULT '' AFTER ip_address");
+            if ($result === false) {
+                error_log('AightBot migration: Failed to add user_agent column - ' . $wpdb->last_error);
+            }
+        }
     }
     
     /**
@@ -208,24 +250,22 @@ class AightBot_Install {
     public static function uninstall() {
         global $wpdb;
         
-        // Delete options
         delete_option(AIGHTBOT_OPTION_PREFIX . 'settings');
         delete_option(AIGHTBOT_OPTION_PREFIX . 'rag_settings');
+        delete_option(AIGHTBOT_OPTION_PREFIX . 'appearance_settings');
         delete_option(AIGHTBOT_OPTION_PREFIX . 'version');
         delete_option(AIGHTBOT_OPTION_PREFIX . 'last_indexed');
+        delete_option(AIGHTBOT_OPTION_PREFIX . 'encryption_key');
         
-        // Drop tables
         $sessions_table = $wpdb->prefix . 'aightbot_sessions';
         $index_table = $wpdb->prefix . 'aightbot_content_index';
         $wpdb->query("DROP TABLE IF EXISTS $sessions_table");
         $wpdb->query("DROP TABLE IF EXISTS $index_table");
         
-        // Clear scheduled events
         wp_clear_scheduled_hook('aightbot_cleanup_sessions');
         wp_clear_scheduled_hook('aightbot_cleanup_logs');
         wp_clear_scheduled_hook('aightbot_scheduled_reindex');
         
-        // Clear any transients
         delete_transient(AIGHTBOT_OPTION_PREFIX . 'test_connection');
     }
 }

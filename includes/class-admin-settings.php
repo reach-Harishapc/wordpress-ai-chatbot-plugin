@@ -44,10 +44,13 @@ class AightBot_Admin_Settings {
             AIGHTBOT_VERSION
         );
         
+        // Enqueue color picker
+        wp_enqueue_style('wp-color-picker');
+        
         wp_enqueue_script(
             'aightbot-admin',
             AIGHTBOT_PLUGIN_URL . 'admin/js/admin-script.js',
-            ['jquery'],
+            ['jquery', 'wp-color-picker'],
             AIGHTBOT_VERSION,
             true
         );
@@ -76,6 +79,13 @@ class AightBot_Admin_Settings {
             'aightbot_rag_settings_group',
             AIGHTBOT_OPTION_PREFIX . 'rag_settings',
             [$this, 'validate_rag_settings']
+        );
+        
+        // Register Appearance settings
+        register_setting(
+            'aightbot_appearance_settings_group',
+            AIGHTBOT_OPTION_PREFIX . 'appearance_settings',
+            [$this, 'validate_appearance_settings']
         );
         
         // Connection Section
@@ -325,6 +335,78 @@ class AightBot_Admin_Settings {
             [$this, 'render_rag_management_section'],
             $this->page_slug . '_rag'
         );
+        
+        // Appearance Settings Sections
+        add_settings_section(
+            'aightbot_appearance_colors',
+            __('Colors', 'aightbot'),
+            [$this, 'render_appearance_colors_section'],
+            $this->page_slug . '_appearance'
+        );
+        
+        add_settings_field(
+            'primary_color',
+            __('Primary Color', 'aightbot'),
+            [$this, 'render_primary_color_field'],
+            $this->page_slug . '_appearance',
+            'aightbot_appearance_colors'
+        );
+        
+        add_settings_field(
+            'secondary_color',
+            __('Secondary Color', 'aightbot'),
+            [$this, 'render_secondary_color_field'],
+            $this->page_slug . '_appearance',
+            'aightbot_appearance_colors'
+        );
+        
+        add_settings_field(
+            'header_text_color',
+            __('Header Text Color', 'aightbot'),
+            [$this, 'render_header_text_color_field'],
+            $this->page_slug . '_appearance',
+            'aightbot_appearance_colors'
+        );
+        
+        add_settings_field(
+            'bot_message_bg',
+            __('Bot Message Background', 'aightbot'),
+            [$this, 'render_bot_message_bg_field'],
+            $this->page_slug . '_appearance',
+            'aightbot_appearance_colors'
+        );
+        
+        add_settings_field(
+            'bot_message_text',
+            __('Bot Message Text', 'aightbot'),
+            [$this, 'render_bot_message_text_field'],
+            $this->page_slug . '_appearance',
+            'aightbot_appearance_colors'
+        );
+        
+        add_settings_field(
+            'chat_background',
+            __('Chat Background', 'aightbot'),
+            [$this, 'render_chat_background_field'],
+            $this->page_slug . '_appearance',
+            'aightbot_appearance_colors'
+        );
+        
+        // Position Section
+        add_settings_section(
+            'aightbot_appearance_position',
+            __('Position', 'aightbot'),
+            [$this, 'render_appearance_position_section'],
+            $this->page_slug . '_appearance'
+        );
+        
+        add_settings_field(
+            'widget_position',
+            __('Widget Position', 'aightbot'),
+            [$this, 'render_widget_position_field'],
+            $this->page_slug . '_appearance',
+            'aightbot_appearance_position'
+        );
     }
     
     public function render_settings_page() {
@@ -387,26 +469,43 @@ class AightBot_Admin_Settings {
         }
         
         // Bot Name
-        $validated['bot_name'] = !empty(trim($input['bot_name'])) 
-            ? sanitize_text_field(trim($input['bot_name'])) 
-            : 'AightBot';
+        $bot_name = isset($input['bot_name']) ? trim($input['bot_name']) : '';
+        $bot_name = strip_tags($bot_name);
+        $bot_name = sanitize_text_field($bot_name);
+        
+        if (empty($bot_name)) {
+            $bot_name = 'AightBot';
+        }
+        
+        if (strlen($bot_name) > 100) {
+            $bot_name = substr($bot_name, 0, 100);
+        }
+        
+        $validated['bot_name'] = $bot_name;
         
         // Model Name
         $validated['model_name'] = !empty(trim($input['model_name'])) 
             ? sanitize_text_field(trim($input['model_name'])) 
             : '';
         
-        // System Prompt - SECURITY FIX: Strip all HTML tags for plain text
         $validated['system_prompt'] = !empty(trim($input['system_prompt'])) 
             ? sanitize_textarea_field(trim($input['system_prompt'])) 
             : '';
         
-        // Starter Message - SECURITY FIX: Strip all HTML tags
+        if (strlen($validated['system_prompt']) > 10000) {
+            add_settings_error(
+                'system_prompt',
+                'too_long',
+                __('System prompt exceeds maximum length and has been truncated to 10,000 characters', 'aightbot'),
+                'warning'
+            );
+            $validated['system_prompt'] = substr($validated['system_prompt'], 0, 10000);
+        }
+        
         $validated['starter_message'] = !empty(trim($input['starter_message'])) 
             ? sanitize_textarea_field(trim($input['starter_message'])) 
             : '';
         
-        // Sampler Overrides - Validate JSON
         $sampler_overrides = isset($input['sampler_overrides']) ? trim($input['sampler_overrides']) : '';
         
         if (!empty($sampler_overrides)) {
@@ -424,8 +523,45 @@ class AightBot_Admin_Settings {
                 );
                 $validated['sampler_overrides'] = '';
             } else {
-                // Store as formatted JSON
-                $validated['sampler_overrides'] = wp_json_encode($decoded, JSON_PRETTY_PRINT);
+                $allowed_params = [
+                    'temperature' => 'float',
+                    'top_p' => 'float',
+                    'top_k' => 'int',
+                    'max_tokens' => 'int',
+                    'frequency_penalty' => 'float',
+                    'presence_penalty' => 'float',
+                    'stop' => 'array',
+                    'stream' => 'bool'
+                ];
+                
+                $cleaned = [];
+                foreach ($decoded as $key => $value) {
+                    if (isset($allowed_params[$key])) {
+                        $type = $allowed_params[$key];
+                        
+                        if ($type === 'float' && is_numeric($value)) {
+                            $cleaned[$key] = (float)$value;
+                        } elseif ($type === 'int' && is_numeric($value)) {
+                            $cleaned[$key] = (int)$value;
+                        } elseif ($type === 'bool' && is_bool($value)) {
+                            $cleaned[$key] = $value;
+                        } elseif ($type === 'array' && is_array($value)) {
+                            $cleaned[$key] = array_values(array_filter($value, 'is_string'));
+                        }
+                    }
+                }
+                
+                if (empty($cleaned)) {
+                    add_settings_error(
+                        'sampler_overrides',
+                        'no_valid_params',
+                        __('No valid sampler parameters found. Allowed: temperature, top_p, top_k, max_tokens, frequency_penalty, presence_penalty, stop, stream', 'aightbot'),
+                        'warning'
+                    );
+                    $validated['sampler_overrides'] = '';
+                } else {
+                    $validated['sampler_overrides'] = wp_json_encode($cleaned, JSON_PRETTY_PRINT);
+                }
             }
         } else {
             $validated['sampler_overrides'] = '';
@@ -437,17 +573,31 @@ class AightBot_Admin_Settings {
         // Disable SSL verification checkbox
         $validated['disable_ssl_verify'] = isset($input['disable_ssl_verify']) && $input['disable_ssl_verify'] === 'yes' ? 'yes' : 'no';
         
-        // Rate limit - maximum requests (default: 20)
         $rate_limit_requests = isset($input['rate_limit_requests']) ? absint($input['rate_limit_requests']) : 20;
         if ($rate_limit_requests < 1) {
             $rate_limit_requests = 20;
+        } elseif ($rate_limit_requests > 1000) {
+            add_settings_error(
+                'rate_limit_requests',
+                'value_too_high',
+                __('Rate limit requests cannot exceed 1000.', 'aightbot'),
+                'warning'
+            );
+            $rate_limit_requests = 1000;
         }
         $validated['rate_limit_requests'] = $rate_limit_requests;
         
-        // Rate limit - time window in seconds (default: 300 = 5 minutes)
         $rate_limit_window = isset($input['rate_limit_window']) ? absint($input['rate_limit_window']) : 300;
         if ($rate_limit_window < 60) {
             $rate_limit_window = 300;
+        } elseif ($rate_limit_window > 3600) {
+            add_settings_error(
+                'rate_limit_window',
+                'value_too_high',
+                __('Rate limit window cannot exceed 3600 seconds (1 hour).', 'aightbot'),
+                'warning'
+            );
+            $rate_limit_window = 3600;
         }
         $validated['rate_limit_window'] = $rate_limit_window;
         
@@ -458,17 +608,31 @@ class AightBot_Admin_Settings {
         $log_retention_days = isset($input['log_retention_days']) ? absint($input['log_retention_days']) : 30;
         $validated['log_retention_days'] = $log_retention_days;
         
-        // Max context messages
         $max_context_messages = isset($input['max_context_messages']) ? absint($input['max_context_messages']) : 40;
         if ($max_context_messages < 1) {
             $max_context_messages = 40;
+        } elseif ($max_context_messages > 200) {
+            add_settings_error(
+                'max_context_messages',
+                'value_too_high',
+                __('Maximum context messages cannot exceed 200.', 'aightbot'),
+                'warning'
+            );
+            $max_context_messages = 200;
         }
         $validated['max_context_messages'] = $max_context_messages;
         
-        // Max context words (approximate token limit)
         $max_context_words = isset($input['max_context_words']) ? absint($input['max_context_words']) : 8000;
-        if ($max_context_words < 10) {
+        if ($max_context_words < 100) {
             $max_context_words = 8000;
+        } elseif ($max_context_words > 50000) {
+            add_settings_error(
+                'max_context_words',
+                'value_too_high',
+                __('Maximum context words cannot exceed 50,000.', 'aightbot'),
+                'warning'
+            );
+            $max_context_words = 50000;
         }
         $validated['max_context_words'] = $max_context_words;
         
@@ -498,11 +662,10 @@ class AightBot_Admin_Settings {
                id="llm_url"
                value="<?php echo esc_attr($value); ?>" 
                class="regular-text code" 
-               required
-               placeholder="https://api.example.com/v1/chat/completions">
+               required>
         <p class="description">
             <?php _e('The OpenAI-compatible API endpoint URL.', 'aightbot'); ?>
-            <br><?php _e('Example: https://api.openai.com/v1/chat/completions', 'aightbot'); ?>
+            <br><?php _e('Example:', 'aightbot'); ?> <code>https://api.openai.com/v1/chat/completions</code>
         </p>
         <?php
     }
@@ -517,14 +680,13 @@ class AightBot_Admin_Settings {
                id="api_key"
                value="<?php echo esc_attr($display_value); ?>" 
                class="regular-text"
-               placeholder="<?php esc_attr_e('Enter API key', 'aightbot'); ?>"
                autocomplete="new-password">
         <p class="description">
             <?php 
             if ($has_key) {
                 _e('API key is stored encrypted. Leave as ••••••••  to keep existing key, or enter a new one to update.', 'aightbot');
             } else {
-                _e('Optional: API key for authentication (stored encrypted).', 'aightbot');
+                _e('Optional. API key for authentication (stored encrypted).', 'aightbot');
             }
             ?>
         </p>
@@ -570,10 +732,10 @@ class AightBot_Admin_Settings {
                name="aightbot_settings[model_name]" 
                id="model_name"
                value="<?php echo esc_attr($value); ?>" 
-               class="regular-text"
-               placeholder="gpt-3.5-turbo">
+               class="regular-text">
         <p class="description">
-            <?php _e('Optional: Specific model to use. If left empty, the API will use its default model.', 'aightbot'); ?>
+            <?php _e('Optional. If left empty, the API will use its default model.', 'aightbot'); ?>
+            <br><?php _e('Example:', 'aightbot'); ?> <code>gpt-4o-mini</code>
         </p>
         <?php
     }
@@ -581,15 +743,14 @@ class AightBot_Admin_Settings {
     public function render_system_prompt_field() {
         $options = get_option(AIGHTBOT_OPTION_PREFIX . 'settings', []);
         $value = $options['system_prompt'] ?? '';
-        $placeholder = __('You are a helpful AI assistant.', 'aightbot');
         ?>
         <textarea name="aightbot_settings[system_prompt]" 
                   id="system_prompt"
                   rows="5" 
-                  class="large-text"
-                  placeholder="<?php echo esc_attr($placeholder); ?>"><?php echo esc_textarea($value); ?></textarea>
+                  class="large-text"><?php echo esc_textarea($value); ?></textarea>
         <p class="description">
-            <?php _e('Optional: Instructions that guide the chatbot\'s personality and behavior.', 'aightbot'); ?>
+            <?php _e('Optional. Instructions that guide the chatbot\'s personality and behavior.', 'aightbot'); ?>
+            <br><?php _e('Example:', 'aightbot'); ?> <code><?php _e('You are a helpful AI assistant.', 'aightbot'); ?></code>
         </p>
         <?php
     }
@@ -601,12 +762,10 @@ class AightBot_Admin_Settings {
         <textarea name="aightbot_settings[starter_message]" 
                   id="starter_message"
                   rows="4" 
-                  class="large-text"
-                  placeholder="<?php esc_attr_e('Hello! How can I help you today?', 'aightbot'); ?>"><?php echo esc_textarea($value); ?></textarea>
+                  class="large-text"><?php echo esc_textarea($value); ?></textarea>
         <p class="description">
-            <?php _e('Optional: Initial assistant message to set context. This is sent to the API as the first message in the conversation.', 'aightbot'); ?>
-            <br>
-            <?php _e('Unlike the system prompt, this appears as an assistant message in the conversation history.', 'aightbot'); ?>
+            <?php _e('Optional. Initial message shown when chat opens.', 'aightbot'); ?>
+            <br><?php _e('Example:', 'aightbot'); ?> <code><?php _e('Hello! How can I help you today?', 'aightbot'); ?></code>
         </p>
         <?php
     }
@@ -614,23 +773,15 @@ class AightBot_Admin_Settings {
     public function render_sampler_overrides_field() {
         $options = get_option(AIGHTBOT_OPTION_PREFIX . 'settings', []);
         $value = $options['sampler_overrides'] ?? '';
-        
-        // Default example
-        $example = wp_json_encode([
-            'temperature' => 0.7,
-            'max_tokens' => 500,
-            'top_p' => 1.0,
-            'frequency_penalty' => 0,
-            'presence_penalty' => 0
-        ], JSON_PRETTY_PRINT);
         ?>
         <textarea name="aightbot_settings[sampler_overrides]" 
                   id="sampler_overrides"
                   rows="8" 
-                  class="large-text code"
-                  placeholder='<?php echo esc_attr($example); ?>'><?php echo esc_textarea($value); ?></textarea>
+                  class="large-text code"><?php echo esc_textarea($value); ?></textarea>
         <p class="description">
-            <?php _e('Optional: JSON object with API parameters like temperature, max_tokens, etc.', 'aightbot'); ?>
+            <?php _e('Optional. Leave empty to use your API\'s defaults.', 'aightbot'); ?>
+            <br>
+            <?php _e('Example:', 'aightbot'); ?> <code>{"temperature": 0.7, "max_tokens": 500, "top_p": 1.0}</code>
             <br>
             <button type="button" class="button button-small" id="validate-json-btn">
                 <?php _e('Validate JSON', 'aightbot'); ?>
@@ -1224,5 +1375,143 @@ class AightBot_Admin_Settings {
             <?php _e('When enabled, the chatbot will only answer questions based on your website content.', 'aightbot'); ?>
         </p>
         <?php
+    }
+    
+    // Appearance Section Renderers
+    public function render_appearance_colors_section() {
+        echo '<p>' . __('Customize the colors of the chat widget.', 'aightbot') . '</p>';
+    }
+    
+    public function render_appearance_position_section() {
+        echo '<p>' . __('Control where the chat widget appears on your site.', 'aightbot') . '</p>';
+    }
+    
+    public function render_primary_color_field() {
+        $settings = get_option(AIGHTBOT_OPTION_PREFIX . 'appearance_settings', []);
+        $value = $settings['primary_color'] ?? '#667eea';
+        ?>
+        <input type="text" 
+               name="<?php echo esc_attr(AIGHTBOT_OPTION_PREFIX . 'appearance_settings[primary_color]'); ?>" 
+               value="<?php echo esc_attr($value); ?>" 
+               class="aightbot-color-picker"
+               data-default-color="#667eea">
+        <p class="description">
+            <?php _e('Main color for toggle button, header, user messages, and send button.', 'aightbot'); ?>
+        </p>
+        <?php
+    }
+    
+    public function render_secondary_color_field() {
+        $settings = get_option(AIGHTBOT_OPTION_PREFIX . 'appearance_settings', []);
+        $value = $settings['secondary_color'] ?? '#764ba2';
+        ?>
+        <input type="text" 
+               name="<?php echo esc_attr(AIGHTBOT_OPTION_PREFIX . 'appearance_settings[secondary_color]'); ?>" 
+               value="<?php echo esc_attr($value); ?>" 
+               class="aightbot-color-picker"
+               data-default-color="#764ba2">
+        <p class="description">
+            <?php _e('Gradient end color. Set same as primary for solid color.', 'aightbot'); ?>
+        </p>
+        <?php
+    }
+    
+    public function render_header_text_color_field() {
+        $settings = get_option(AIGHTBOT_OPTION_PREFIX . 'appearance_settings', []);
+        $value = $settings['header_text_color'] ?? '#ffffff';
+        ?>
+        <input type="text" 
+               name="<?php echo esc_attr(AIGHTBOT_OPTION_PREFIX . 'appearance_settings[header_text_color]'); ?>" 
+               value="<?php echo esc_attr($value); ?>" 
+               class="aightbot-color-picker"
+               data-default-color="#ffffff">
+        <p class="description">
+            <?php _e('Text color for the header title and buttons.', 'aightbot'); ?>
+        </p>
+        <?php
+    }
+    
+    public function render_bot_message_bg_field() {
+        $settings = get_option(AIGHTBOT_OPTION_PREFIX . 'appearance_settings', []);
+        $value = $settings['bot_message_bg'] ?? '#ffffff';
+        ?>
+        <input type="text" 
+               name="<?php echo esc_attr(AIGHTBOT_OPTION_PREFIX . 'appearance_settings[bot_message_bg]'); ?>" 
+               value="<?php echo esc_attr($value); ?>" 
+               class="aightbot-color-picker"
+               data-default-color="#ffffff">
+        <p class="description">
+            <?php _e('Background color for bot response bubbles.', 'aightbot'); ?>
+        </p>
+        <?php
+    }
+    
+    public function render_bot_message_text_field() {
+        $settings = get_option(AIGHTBOT_OPTION_PREFIX . 'appearance_settings', []);
+        $value = $settings['bot_message_text'] ?? '#1f2937';
+        ?>
+        <input type="text" 
+               name="<?php echo esc_attr(AIGHTBOT_OPTION_PREFIX . 'appearance_settings[bot_message_text]'); ?>" 
+               value="<?php echo esc_attr($value); ?>" 
+               class="aightbot-color-picker"
+               data-default-color="#1f2937">
+        <p class="description">
+            <?php _e('Text color for bot responses.', 'aightbot'); ?>
+        </p>
+        <?php
+    }
+    
+    public function render_chat_background_field() {
+        $settings = get_option(AIGHTBOT_OPTION_PREFIX . 'appearance_settings', []);
+        $value = $settings['chat_background'] ?? '#f9fafb';
+        ?>
+        <input type="text" 
+               name="<?php echo esc_attr(AIGHTBOT_OPTION_PREFIX . 'appearance_settings[chat_background]'); ?>" 
+               value="<?php echo esc_attr($value); ?>" 
+               class="aightbot-color-picker"
+               data-default-color="#f9fafb">
+        <p class="description">
+            <?php _e('Background color of the messages area.', 'aightbot'); ?>
+        </p>
+        <?php
+    }
+    
+    public function render_widget_position_field() {
+        $settings = get_option(AIGHTBOT_OPTION_PREFIX . 'appearance_settings', []);
+        $value = $settings['widget_position'] ?? 'right';
+        ?>
+        <select name="<?php echo esc_attr(AIGHTBOT_OPTION_PREFIX . 'appearance_settings[widget_position]'); ?>">
+            <option value="right" <?php selected($value, 'right'); ?>><?php _e('Right', 'aightbot'); ?></option>
+            <option value="left" <?php selected($value, 'left'); ?>><?php _e('Left', 'aightbot'); ?></option>
+        </select>
+        <p class="description">
+            <?php _e('Which corner of the screen the widget appears in.', 'aightbot'); ?>
+        </p>
+        <?php
+    }
+    
+    public function validate_appearance_settings($input) {
+        $validated = [];
+        
+        // Validate colors (hex format)
+        $color_fields = ['primary_color', 'secondary_color', 'header_text_color', 'bot_message_bg', 'bot_message_text', 'chat_background'];
+        $color_defaults = [
+            'primary_color' => '#667eea',
+            'secondary_color' => '#764ba2',
+            'header_text_color' => '#ffffff',
+            'bot_message_bg' => '#ffffff',
+            'bot_message_text' => '#1f2937',
+            'chat_background' => '#f9fafb'
+        ];
+        
+        foreach ($color_fields as $field) {
+            $color = isset($input[$field]) ? sanitize_hex_color($input[$field]) : '';
+            $validated[$field] = !empty($color) ? $color : $color_defaults[$field];
+        }
+        
+        // Validate position
+        $validated['widget_position'] = isset($input['widget_position']) && $input['widget_position'] === 'left' ? 'left' : 'right';
+        
+        return $validated;
     }
 }

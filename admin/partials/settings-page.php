@@ -32,6 +32,10 @@ $active_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'general
            class="nav-tab <?php echo $active_tab === 'rag' ? 'nav-tab-active' : ''; ?>">
             <?php _e('RAG Settings', 'aightbot'); ?>
         </a>
+        <a href="?page=aightbot-settings&tab=appearance" 
+           class="nav-tab <?php echo $active_tab === 'appearance' ? 'nav-tab-active' : ''; ?>">
+            <?php _e('Appearance', 'aightbot'); ?>
+        </a>
     </h2>
     
     <?php if (!$is_configured && $active_tab === 'general'): ?>
@@ -73,7 +77,7 @@ $active_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'general
                 </li>
             </ul>
         </div>
-    <?php else: ?>
+    <?php elseif ($active_tab === 'rag'): ?>
         <form method="post" action="options.php" id="aightbot-rag-settings-form">
             <?php 
             settings_fields('aightbot_rag_settings_group');
@@ -89,6 +93,23 @@ $active_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'general
                 <li><strong><?php _e('How it works:', 'aightbot'); ?></strong> <?php _e('The plugin indexes your public content, then searches it when users ask questions.', 'aightbot'); ?></li>
                 <li><strong><?php _e('Privacy:', 'aightbot'); ?></strong> <?php _e('Only published, non-password-protected content is indexed.', 'aightbot'); ?></li>
                 <li><strong><?php _e('Performance:', 'aightbot'); ?></strong> <?php _e('Uses MySQL FULLTEXT search for fast, efficient content retrieval.', 'aightbot'); ?></li>
+            </ul>
+        </div>
+    <?php elseif ($active_tab === 'appearance'): ?>
+        <form method="post" action="options.php" id="aightbot-appearance-settings-form">
+            <?php 
+            settings_fields('aightbot_appearance_settings_group');
+            do_settings_sections('aightbot-settings_appearance');
+            submit_button(__('Save Appearance Settings', 'aightbot')); 
+            ?>
+        </form>
+        
+        <div class="aightbot-help">
+            <h2><?php _e('Customizing Appearance', 'aightbot'); ?></h2>
+            <p><?php _e('Customize the colors and position of the chat widget to match your website design.', 'aightbot'); ?></p>
+            <ul>
+                <li><strong><?php _e('Primary Color:', 'aightbot'); ?></strong> <?php _e('Used for the toggle button, header, user messages, and send button.', 'aightbot'); ?></li>
+                <li><strong><?php _e('Secondary Color:', 'aightbot'); ?></strong> <?php _e('Creates a gradient effect with the primary color. Set to the same as primary for a solid color.', 'aightbot'); ?></li>
             </ul>
         </div>
     <?php endif; ?>

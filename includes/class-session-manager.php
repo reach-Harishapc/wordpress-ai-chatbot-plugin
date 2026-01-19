@@ -10,8 +10,6 @@ class AightBot_Session_Manager {
     
     private function init_hooks() {
         add_action('aightbot_cleanup_sessions', [$this, 'cleanup_old_sessions']);
-        add_action('wp_ajax_aightbot_new_session', [$this, 'ajax_new_session']);
-        add_action('wp_ajax_nopriv_aightbot_new_session', [$this, 'ajax_new_session']);
     }
     
     /**
@@ -24,30 +22,23 @@ class AightBot_Session_Manager {
     }
     
     /**
-     * AJAX handler for creating new session
-     */
-    public function ajax_new_session() {
-        // Verify nonce
-        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'aightbot_chat_nonce')) {
-            wp_send_json_error(__('Security check failed', 'aightbot'));
-        }
-        
-        $session_id = $this->generate_session_id();
-        
-        wp_send_json_success([
-            'session_id' => $session_id
-        ]);
-    }
-    
-    /**
      * Get session by ID
      * 
      * @param string $session_id Session ID
+     * @param bool $verify_ownership Whether to verify the user owns this session
      * @return object|null Session data
      */
-    public function get_session($session_id) {
+    public function get_session($session_id, $verify_ownership = true) {
         global $wpdb;
         $table = $wpdb->prefix . 'aightbot_sessions';
+        
+        if ($verify_ownership && is_user_logged_in()) {
+            return $wpdb->get_row($wpdb->prepare(
+                "SELECT * FROM $table WHERE session_id = %s AND user_id = %d",
+                $session_id,
+                get_current_user_id()
+            ));
+        }
         
         return $wpdb->get_row($wpdb->prepare(
             "SELECT * FROM $table WHERE session_id = %s",
@@ -81,11 +72,26 @@ class AightBot_Session_Manager {
         $table = $wpdb->prefix . 'aightbot_sessions';
         
         $hours_to_keep = apply_filters('aightbot_session_retention_hours', 1);
+        $batch_size = 50;
+        $iterations = 0;
         
-        $wpdb->query($wpdb->prepare(
-            "DELETE FROM $table WHERE last_active < DATE_SUB(NOW(), INTERVAL %d HOUR)",
-            $hours_to_keep
-        ));
+        do {
+            $deleted = $wpdb->query($wpdb->prepare(
+                "DELETE FROM $table 
+                 WHERE last_active < DATE_SUB(NOW(), INTERVAL %d HOUR) 
+                 LIMIT %d",
+                $hours_to_keep,
+                $batch_size
+            ));
+            
+            if ($deleted === false || ++$iterations >= 100) {
+                break;
+            }
+            
+            if ($deleted === $batch_size) {
+                usleep(100000);
+            }
+        } while ($deleted === $batch_size);
     }
     
     /**
@@ -136,13 +142,43 @@ class AightBot_Session_Manager {
             "SELECT COUNT(*) FROM $table WHERE last_active >= DATE_SUB(NOW(), INTERVAL 7 DAY)"
         );
         
-        // Count total messages from all sessions
-        $sessions = $wpdb->get_col("SELECT history FROM $table");
-        foreach ($sessions as $history_json) {
-            $history = json_decode($history_json, true);
-            if (is_array($history)) {
-                $stats['total_messages'] += count($history);
+        if (version_compare($wpdb->db_version(), '5.7.8', '>=')) {
+            $stats['total_messages'] = (int) $wpdb->get_var(
+                "SELECT COALESCE(SUM(JSON_LENGTH(history)), 0) 
+                 FROM $table 
+                 WHERE history IS NOT NULL AND history != ''"
+            );
+        } else {
+            $total = 0;
+            $batch_size = 100;
+            $offset = 0;
+            
+            while (true) {
+                $sessions = $wpdb->get_col($wpdb->prepare(
+                    "SELECT history FROM $table WHERE history IS NOT NULL LIMIT %d OFFSET %d",
+                    $batch_size,
+                    $offset
+                ));
+                
+                if (empty($sessions)) {
+                    break;
+                }
+                
+                foreach ($sessions as $history_json) {
+                    $history = json_decode($history_json, true);
+                    if (is_array($history)) {
+                        $total += count($history);
+                    }
+                }
+                
+                if (count($sessions) < $batch_size) {
+                    break;
+                }
+                
+                $offset += $batch_size;
             }
+            
+            $stats['total_messages'] = $total;
         }
         
         return $stats;

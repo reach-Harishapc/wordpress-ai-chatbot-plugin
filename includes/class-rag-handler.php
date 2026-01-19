@@ -32,7 +32,7 @@ class AightBot_RAG_Handler {
      * @return bool
      */
     public function is_enabled() {
-        return !empty($this->settings['enable_rag']);
+        return isset($this->settings['enable_rag']) && $this->settings['enable_rag'] === 'yes';
     }
     
     /**
@@ -44,9 +44,6 @@ class AightBot_RAG_Handler {
      */
     public function search_content($query, $limit = null) {
         global $wpdb;
-        
-        // Reload settings to ensure we have latest configuration
-        $this->settings = get_option(AIGHTBOT_OPTION_PREFIX . 'rag_settings', []);
         
         if (!$this->is_enabled()) {
             return [];
@@ -103,10 +100,12 @@ class AightBot_RAG_Handler {
      * @return string Prepared query
      */
     private function prepare_search_query($query) {
-        // Remove extra whitespace
         $query = trim(preg_replace('/\s+/', ' ', $query));
         
-        // Remove special characters that might break FULLTEXT
+        if (strlen($query) > 500) {
+            $query = substr($query, 0, 500);
+        }
+        
         $query = preg_replace('/[^\w\s\-]/', '', $query);
         
         return $query;
@@ -157,14 +156,10 @@ class AightBot_RAG_Handler {
      * @return string Enhanced system prompt with context
      */
     public function get_enhanced_system_prompt($user_message, $original_system_prompt) {
-        // Reload settings to check if RAG is currently enabled
-        $this->settings = get_option(AIGHTBOT_OPTION_PREFIX . 'rag_settings', []);
-        
         if (!$this->is_enabled()) {
             return $original_system_prompt;
         }
         
-        // Search for relevant content
         $results = $this->search_content($user_message);
         
         if (empty($results)) {
@@ -172,7 +167,7 @@ class AightBot_RAG_Handler {
         }
         
         // Build context
-        $cite_sources = !empty($this->settings['cite_sources']);
+        $cite_sources = isset($this->settings['cite_sources']) && $this->settings['cite_sources'] === 'yes';
         $context = $this->build_context($results, $cite_sources);
         
         // Create enhanced prompt
@@ -199,9 +194,6 @@ class AightBot_RAG_Handler {
      * @return string|null Context message or null if no relevant content
      */
     public function get_context_injection($user_message) {
-        // Reload settings to check if RAG is currently enabled
-        $this->settings = get_option(AIGHTBOT_OPTION_PREFIX . 'rag_settings', []);
-        
         if (!$this->is_enabled()) {
             return null;
         }
@@ -212,7 +204,7 @@ class AightBot_RAG_Handler {
             return null;
         }
         
-        $cite_sources = !empty($this->settings['cite_sources']);
+        $cite_sources = isset($this->settings['cite_sources']) && $this->settings['cite_sources'] === 'yes';
         return $this->build_context($results, $cite_sources);
     }
     

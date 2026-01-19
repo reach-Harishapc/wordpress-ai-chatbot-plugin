@@ -5,15 +5,94 @@
 class AightBot_Frontend_Widget {
     
     private $settings;
+    private $appearance_settings;
     
     public function __construct() {
         $this->settings = get_option(AIGHTBOT_OPTION_PREFIX . 'settings', []);
+        $this->appearance_settings = get_option(AIGHTBOT_OPTION_PREFIX . 'appearance_settings', []);
         $this->init_hooks();
+        
+        add_action('wp_head', [$this, 'add_security_headers'], 1);
+        add_action('wp_head', [$this, 'output_custom_styles'], 20);
     }
     
     private function init_hooks() {
         add_action('wp_footer', [$this, 'render_chat_widget']);
         add_action('wp_enqueue_scripts', [$this, 'enqueue_assets']);
+    }
+    
+    public function add_security_headers() {
+        if (!is_admin()) {
+            header("X-Content-Type-Options: nosniff");
+            header("X-Frame-Options: SAMEORIGIN");
+            header("Referrer-Policy: strict-origin-when-cross-origin");
+        }
+    }
+    
+    /**
+     * Output custom CSS styles based on appearance settings
+     */
+    public function output_custom_styles() {
+        $primary = $this->appearance_settings['primary_color'] ?? '#667eea';
+        $secondary = $this->appearance_settings['secondary_color'] ?? '#764ba2';
+        $header_text = $this->appearance_settings['header_text_color'] ?? '#ffffff';
+        $bot_bg = $this->appearance_settings['bot_message_bg'] ?? '#ffffff';
+        $bot_text = $this->appearance_settings['bot_message_text'] ?? '#1f2937';
+        $chat_bg = $this->appearance_settings['chat_background'] ?? '#f9fafb';
+        $position = $this->appearance_settings['widget_position'] ?? 'right';
+        
+        ?>
+        <style id="aightbot-custom-styles">
+            .aightbot-widget {
+                <?php echo $position === 'left' ? 'left: 20px; right: auto;' : 'right: 20px; left: auto;'; ?>
+            }
+            .aightbot-widget-toggle,
+            .aightbot-widget-header,
+            .aightbot-send-btn {
+                background: linear-gradient(135deg, <?php echo esc_attr($primary); ?> 0%, <?php echo esc_attr($secondary); ?> 100%);
+            }
+            .aightbot-widget-toggle,
+            .aightbot-widget-header,
+            .aightbot-widget-header h3,
+            .aightbot-widget-actions button,
+            .aightbot-send-btn {
+                color: <?php echo esc_attr($header_text); ?>;
+            }
+            .aightbot-user-message .aightbot-message-content {
+                background: linear-gradient(135deg, <?php echo esc_attr($primary); ?> 0%, <?php echo esc_attr($secondary); ?> 100%);
+                color: <?php echo esc_attr($header_text); ?>;
+            }
+            .aightbot-widget-messages {
+                background: <?php echo esc_attr($chat_bg); ?>;
+            }
+            .aightbot-bot-message .aightbot-message-content {
+                background: <?php echo esc_attr($bot_bg); ?>;
+                color: <?php echo esc_attr($bot_text); ?>;
+            }
+            .aightbot-widget-input input:focus {
+                border-color: <?php echo esc_attr($primary); ?>;
+                box-shadow: 0 0 0 3px <?php echo esc_attr($primary); ?>1a;
+            }
+            .aightbot-bot-message .aightbot-message-content a {
+                color: <?php echo esc_attr($primary); ?>;
+            }
+            .aightbot-bot-message .aightbot-message-content blockquote {
+                border-left-color: <?php echo esc_attr($primary); ?>;
+            }
+            <?php if ($position === 'left'): ?>
+            .aightbot-widget-window {
+                right: auto;
+                left: 0;
+            }
+            @media (max-width: 480px) {
+                .aightbot-widget-toggle {
+                    margin-left: 0;
+                    margin-right: auto;
+                }
+            }
+            <?php endif; ?>
+        </style>
+        <?php
     }
     
     /**
@@ -68,7 +147,7 @@ class AightBot_Frontend_Widget {
             
             <div class="aightbot-widget-window">
                 <div class="aightbot-widget-header">
-                    <h3><?php echo $bot_name; ?></h3>
+                    <h3><?php echo esc_html($bot_name); ?></h3>
                     <div class="aightbot-widget-actions">
                         <button type="button" class="aightbot-new-chat" title="<?php esc_attr_e('Start new conversation', 'aightbot'); ?>">
                             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
