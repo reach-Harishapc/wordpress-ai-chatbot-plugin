@@ -102,5 +102,3 @@ wordpress-ai-plugin-2022/
 - OpenAI API key
 
 ---
-
-> **Note:** This plugin was built as a freelance project in 2022 for Ziegler Technical Solutions, featuring enterprise-grade security and RAG capabilities for WordPress sites.
